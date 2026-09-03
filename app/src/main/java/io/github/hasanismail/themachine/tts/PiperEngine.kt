@@ -110,6 +110,7 @@ class PiperEngine {
 
         // Synthesis under the lock, so release() cannot free the engine mid-sentence.
         // Playback is plain AudioTrack and needs no such protection.
+        val startedAt = System.nanoTime()
         val audio = synchronized(engineLock) {
             val engine = tts
             if (engine == null || closing) {
@@ -121,7 +122,18 @@ class PiperEngine {
                 return@withContext false
             }
         }
-        play(audio.samples, audio.sampleRate)
+        val synthesised = (System.nanoTime() - startedAt) / NANOS_PER_MILLI
+        val played = play(audio.samples, audio.sampleRate)
+        // Split deliberately. The budget books ~1.6 s to speech while synthesis measures a
+        // fraction of that, so the two have to be attributable separately before any voice
+        // model is blamed for time it never spent.
+        Log.i(
+            TAG,
+            "piper: synthesis $synthesised ms, playback start " +
+                "${(System.nanoTime() - startedAt) / NANOS_PER_MILLI - synthesised} ms, " +
+                "${audio.samples.size / audio.sampleRate.toFloat()} s of audio, $THREADS threads",
+        )
+        played
     }
 
     private fun play(samples: FloatArray, sampleRate: Int): Boolean {
@@ -205,7 +217,22 @@ class PiperEngine {
 
     private companion object {
         const val TAG = "TheMachine"
-        const val THREADS = 2
+
+        /**
+         * Matches WhisperEngine and LlamaEngine rather than a literal 2.
+         *
+         * CLAUDE.md's runtime policy says threads = big-core count, and the other two
+         * engines implement it; this one was left at two. Measured on the pinned
+         * sherpa-onnx for a 3.1 s utterance: 0.254 s at one thread, 0.229 s at two,
+         * 0.144 s at six. Speech is the largest single item in the latency budget.
+         */
+        val THREADS: Int get() = (Runtime.getRuntime().availableProcessors() - 2).coerceIn(2, MAX_THREADS)
+
+        /** Leaves headroom for the UI, exactly as the other engines do. */
+        private const val MAX_THREADS = 6
+
+        private const val NANOS_PER_MILLI = 1_000_000
+
         const val SPEAKER = 0
         const val SPEED = 1.0f
         const val WALK_DEPTH = 3

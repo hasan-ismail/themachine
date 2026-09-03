@@ -464,6 +464,42 @@ What did change is a `join` before the model is freed. The save walks the very c
 `nativeFree` releases, and that race is real even though it is not the one being chased —
 state saving has already caused one use-after-free crash in this project.
 
+### The crash loop was R8, and it was never device-specific
+
+v0.1.0 crash-looped on the S26 Ultra and ran on the Z Flip, so three investigations went
+looking for what was different about the phone. Nothing was. The device had twelve identical
+native crashes waiting in dropbox, all one line:
+
+    JNI DETECTED ERROR IN APPLICATION: fid == null
+      in call to GetObjectField
+      from com.k2fsa.sherpa.onnx.OfflineTts.newFromFile(OfflineTtsConfig)
+
+sherpa-onnx's C++ reads its config objects field by field with `GetFieldID`. `OfflineTtsConfig`
+is a plain Kotlin class with no native methods of its own, so the keep rule that protects
+`native <methods>` did not cover it, R8 renamed the fields, `GetFieldID` returned null, and
+the process aborted the instant the voice loaded. Every release build did this. Only release,
+because debug is not minified.
+
+It looked device-specific for a dull reason: the release variant had only ever been *launched*
+on the development phone, never driven through a voice session. Launching it exercises none of
+this. The fix is two keep rules; the lesson is that the release variant needs the same
+end-to-end test the debug one gets, on both handsets.
+
+### Speech was never the 1.6 seconds it was billed for
+
+With synthesis and playback timed separately, on both phones:
+
+    piper: synthesis 146 ms, playback start 3175 ms, 3.16 s of audio, 6 threads
+
+Synthesis is 111-150 ms. `play()` blocks until the audio finishes, so the "1.6 s of TTS" in
+the latency budget was measuring the length of the spoken sentence, not work. Time to first
+word is synthesis plus AudioTrack start. Every model swap considered for the voice was
+therefore aimed at a cost that does not exist — worth knowing before spending 62 MB on a
+better vocoder.
+
+`PiperEngine` was also still pinned at two threads while Whisper and Llama both scaled to the
+core count, contrary to CLAUDE.md's own runtime policy. It now runs at six.
+
 ### A build that cannot say why it died
 
 v0.1.0 was tagged, signed, published, and crash-looped on Hasan's S26 Ultra — the phone
