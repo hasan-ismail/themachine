@@ -464,6 +464,36 @@ What did change is a `join` before the model is freed. The save walks the very c
 `nativeFree` releases, and that race is real even though it is not the one being chased —
 state saving has already caused one use-after-free crash in this project.
 
+### Tool descriptions are a fixed budget, and I spent it badly
+
+Read out of Hasan's own query log on the S26, not reasoned about. Three real faults.
+
+**read_screen had become the drain every utterance fell down.** I had widened its
+description to "or answer a question about them", and a 1B reads the tool list as a bag of
+words, so the broadest invitation beat every narrower tool: "what time is it in Berlin",
+"hello, hear me" and "beep" all resolved to read_screen. Narrowed back. Its optional
+`question` parameter went too — given one, the model filled it with the parameter's own
+description, verbatim: `{"question":"What was asked about the screen."}`. ScreenQuestion
+already decides that from the transcript and needs nothing from the model.
+
+**"Set a 30 minute timer" became a reminder at hour 30.** Two separate causes. The word
+"timer" appeared nowhere in set_timer's description while "time" sat in create_reminder's,
+so the match went to the wrong tool. And `FunctionGemmaDialect` compiled every integer as a
+bare unbounded `integer`, ignoring `param.range`, where the JSON dialect compiles the real
+bounds — which is how an hour of 30 was representable at all. Both fixed; the range compiler
+is now shared rather than reimplemented per dialect.
+
+**And then I made it worse before I made it better.** Rewriting five descriptions to be more
+explicit pushed the prompt past the 300-word ceiling that `MachineToolsTest` exists to
+defend, and on-device routing degraded badly: `set_timer {hours=3, minutes=30, label=10}}`.
+That test is not a style rule. Prompt length is a resource, tool descriptions all draw on
+the same budget, and spending it on one tool takes it from another.
+
+What is left is not tunable by wording: "beep" still becomes an alarm, because the grammar
+forces exactly one tool per turn and a 1B scoring 16.64 on BFCL has no reliable way to
+decline. That is a model-capability problem and it belongs to the model survey's first
+recommendation, not to another round of adjectives.
+
 ### The crash loop was R8, and it was never device-specific
 
 v0.1.0 crash-looped on the S26 Ultra and ran on the Z Flip, so three investigations went

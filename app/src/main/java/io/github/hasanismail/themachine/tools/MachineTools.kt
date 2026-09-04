@@ -66,7 +66,11 @@ object MachineTools {
         ),
         Tool(
             name = SET_TIMER,
-            description = "Countdown for a length of time.",
+            // The word "timer" appeared nowhere in this description, while "time" sat in
+            // create_reminder's. "Set a 30 minute timer" duly became a reminder. A small
+            // model matches on the tokens it is given, so the tool that owns a word has
+            // to contain it.
+            description = "Timer counting down: set a timer for ten minutes, timer 5 min.",
             params = listOf(
                 // Each unit is reported as spoken and added up in Kotlin. Asked for a
                 // total, the model copied the number from whichever example looked
@@ -84,7 +88,7 @@ object MachineTools {
         ),
         Tool(
             name = CREATE_REMINDER,
-            description = "Remember a task, optionally at a time.",
+            description = "Remind me to do a task, optionally at a clock time.",
             params = listOf(
                 ToolParam("task", ParamType.STRING, "What to be reminded of.", required = true),
                 ToolParam(
@@ -136,16 +140,18 @@ object MachineTools {
             // screenshot/capture/save only in take_screenshot — so the word the user
             // actually said lands in exactly one place. The closing negative follows
             // navigate's "Never scrolling.", the other colliding pair in this list.
-            description = "Speak the words on screen, or answer a question about them: " +
-                "what does this say, read this to me, summarise this, what is this error. " +
-                "Never saves a picture.",
-            params = listOf(
-                ToolParam(
-                    "question",
-                    ParamType.STRING,
-                    "What was asked about the screen. Omit to read it out word for word.",
-                ),
-            ),
+            // "or answer a question about them" was in here, and it turned this tool into
+            // the drain every utterance fell down: "what time is it in Berlin", "hello,
+            // hear me", even "beep" all came back as read_screen. A 1B reads a tool list
+            // as a bag of words, so an invitation that broad outcompetes every narrower
+            // tool. Whether a question is being asked *about* the screen is decided from
+            // the transcript by ScreenQuestion, which needs nothing from the model.
+            //
+            // The parameter went with it. Given one, the model filled it with the
+            // parameter's own description, verbatim — {"question":"What was asked about
+            // the screen."} — which is the failure mode small models have with any
+            // optional free-text slot.
+            description = "Speak the words on this screen: what does this say. Never saves a picture.",
             requires = ToolCapability.ACCESSIBILITY,
         ),
         Tool(
@@ -200,14 +206,21 @@ object MachineTools {
         ),
         Tool(
             name = ANSWER,
-            description = "Answer in words, when no action is needed.",
+            // This owned no question words at all, so every "what..." fell to read_screen,
+            // whose description carries "what does this say". The tool that should catch a
+            // question has to be the one holding the words a question starts with.
+            description = "Answer a question from knowledge: what time is it in Berlin, who wrote Hamlet.",
             params = listOf(
                 ToolParam("text", ParamType.STRING, "The answer, one or two sentences.", required = true),
             ),
         ),
         Tool(
             name = UNSUPPORTED,
-            description = "Nothing else fits: errands this phone cannot run, like booking or ordering.",
+            // Framed only as "errands" before, so a misheard or meaningless transcript had
+            // nowhere to go. The grammar forces exactly one tool per turn, so with no
+            // representable "I did not understand" the model picks the nearest thing that
+            // takes arguments: "beep" became an alarm at ten in the evening.
+            description = "Nothing else fits, or the words were unclear.",
             params = listOf(
                 ToolParam("reason", ParamType.STRING, "Briefly, what was asked for.", required = true),
             ),

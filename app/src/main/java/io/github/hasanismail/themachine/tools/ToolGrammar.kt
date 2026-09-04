@@ -136,6 +136,11 @@ object ToolGrammar {
      * than silently falling back to an unbounded integer, because a range that quietly
      * stopped being enforced would be worse than never having asked for one.
      */
+    // The alternation admitting exactly this range and nothing outside it. Public because
+    // every dialect needs the same bounds: FunctionGemmaDialect compiled a bare unbounded
+    // integer instead, and filed a real reminder at hour 30.
+    fun boundedRule(range: IntRange): String = bounded(range)
+
     private fun bounded(range: IntRange): String {
         require(range.first >= 0 && range.last <= MAX_BOUNDED && range.first <= range.last) {
             "Unsupported argument range $range"

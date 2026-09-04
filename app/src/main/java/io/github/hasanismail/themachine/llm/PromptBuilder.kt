@@ -88,11 +88,7 @@ object PromptBuilder {
                 """{"tool":"create_reminder","arguments":{"task":"take the bins out","hour":20}}""",
         )
         appendLine("""open Spotify -> {"tool":"open_app","arguments":{"app":"Spotify"}}""")
-        // The arguments object is not optional once a tool declares a parameter: the
-        // grammar emits ,"arguments": for every such tool, so the old bare
-        // {"tool":"read_screen"} became unproducible the moment "question" was added —
-        // an example the grammar forbids teaches the model to fight the sampler.
-        appendLine("""what does this say -> {"tool":"read_screen","arguments":{}}""")
+        appendLine("""what does this say -> {"tool":"read_screen"}""")
         // Teaches the category, not the phrase: asked to arrange something out in the
         // world, the model had been filing it as a reminder and inventing a time to
         // fire it at, which is worse than saying no.

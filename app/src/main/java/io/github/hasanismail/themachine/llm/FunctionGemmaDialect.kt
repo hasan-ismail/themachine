@@ -12,6 +12,7 @@ package io.github.hasanismail.themachine.llm
 import io.github.hasanismail.themachine.tools.ParamType
 import io.github.hasanismail.themachine.tools.Tool
 import io.github.hasanismail.themachine.tools.ToolCall
+import io.github.hasanismail.themachine.tools.ToolGrammar
 import io.github.hasanismail.themachine.tools.ToolParam
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -145,7 +146,11 @@ object FunctionGemmaDialect : PromptDialect {
                 val rule = "v$index-$position"
                 appendLine(
                     when (param.type) {
-                        ParamType.INTEGER -> "$rule ::= integer"
+                        // Bounded exactly as the JSON dialect bounds it. This read
+                        // "integer" and ignored param.range entirely, so an hour could be
+                        // any number at all: a real reminder was filed at hour 30.
+                        ParamType.INTEGER ->
+                            "$rule ::= " + (param.range?.let { ToolGrammar.boundedRule(it) } ?: "integer")
 
                         ParamType.BOOLEAN -> "$rule ::= boolean"
 
