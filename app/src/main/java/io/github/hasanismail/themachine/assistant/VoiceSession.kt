@@ -215,6 +215,7 @@ class VoiceSession(private val context: Context, private val scope: CoroutineSco
      */
     fun stopListening() {
         MachineSounds.capturing = false
+        MicForegroundService.stop(context)
         // Cancelled but deliberately still referenced. Nulling it here threw away the only
         // handle on a recorder that had not finished releasing the microphone, so the next
         // summon opened a second one on top of it and the audio system made it queue —
@@ -268,6 +269,11 @@ class VoiceSession(private val context: Context, private val scope: CoroutineSco
     private suspend fun listen() {
         _state.value = SessionState.Listening(level = 0f, heardSpeech = false)
         MachineSounds.capturing = true
+        // RECORD_AUDIO is granted "while in use", and this records from an overlay with no
+        // activity in the foreground, so the appop hands the app digital zeros instead of
+        // audio. A microphone-typed foreground service puts the process into the state the
+        // appop checks for. It runs only while recording, so it costs nothing at rest.
+        MicForegroundService.start(context)
         // The endpointer ignores the first few frames, which are the microphone opening
         // rather than anything in the room.
         val endpointer = Endpointer(leadInMillis = Endpointer.MIC_SETTLE_MILLIS)
@@ -288,6 +294,7 @@ class VoiceSession(private val context: Context, private val scope: CoroutineSco
         // which has to join this job before it may open the microphone — waited for all
         // of it. Nine seconds of an overlay that is up, looks ready, and is not
         // listening. This job's one remaining duty is the microphone.
+        MicForegroundService.stop(context)
         val done = finished ?: return
         processing?.cancel()
         processing = scope.launch { handle(done) }
@@ -604,6 +611,7 @@ class VoiceSession(private val context: Context, private val scope: CoroutineSco
 
     /** Frees both models. Called when the overlay goes away, not between utterances. */
     fun release() {
+        MicForegroundService.stop(context)
         // Piper and the router stop themselves promptly; whisper and llama take the
         // monitor an in-flight decode holds, and this is the main thread closing an
         // overlay. Freeing them is handed to a scope that outlives the session.

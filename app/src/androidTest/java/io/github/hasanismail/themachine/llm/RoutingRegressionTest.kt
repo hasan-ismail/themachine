@@ -80,9 +80,13 @@ class RoutingRegressionTest {
     @Test
     fun theScreenToolDoesNotSwallowEverything() {
         assumeTrue("No language model installed", ready)
-        // All four were recorded resolving to read_screen on the S26 Ultra.
+        // Recorded resolving to read_screen on the S26 Ultra.
+        //
+        // "what time is it in Berlin" is deliberately absent: it never reaches the model
+        // any more. LocalAnswers reads it off the platform's own zone table before a model
+        // is even loaded, which is exact where routing it to a 1B was a coin toss — see
+        // LocalAnswersZoneTest. Asserting on its routing here would test the wrong layer.
         for (utterance in listOf(
-            "what time is it in Berlin",
             "hello, hear me",
             "beep",
             "set a 30 minute timer",

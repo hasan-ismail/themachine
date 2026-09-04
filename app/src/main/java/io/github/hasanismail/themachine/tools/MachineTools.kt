@@ -109,7 +109,7 @@ object MachineTools {
         ),
         Tool(
             name = SEND_MESSAGE,
-            description = "Send a text message to someone.",
+            description = "Text or message someone.",
             params = listOf(
                 ToolParam("recipient", ParamType.STRING, "Contact name or phone number.", required = true),
                 ToolParam("body", ParamType.STRING, "The message to send.", required = true),
@@ -118,7 +118,7 @@ object MachineTools {
         ),
         Tool(
             name = CALL_CONTACT,
-            description = "Place a phone call.",
+            description = "Call, phone or ring someone.",
             params = listOf(
                 ToolParam("recipient", ParamType.STRING, "Contact name or phone number.", required = true),
             ),
@@ -151,7 +151,11 @@ object MachineTools {
             // parameter's own description, verbatim — {"question":"What was asked about
             // the screen."} — which is the failure mode small models have with any
             // optional free-text slot.
-            description = "Speak the words on this screen: what does this say. Never saves a picture.",
+            // "what does this say" is deliberately NOT repeated here: the prompt already
+            // carries it as a worked example, and having the same question-shaped phrase in
+            // both places is what kept pulling "what time is it in Berlin" to this tool.
+            // The description says what the tool reads; the example says how it is asked for.
+            description = "Speak aloud the text currently displayed. Never saves a picture.",
             requires = ToolCapability.ACCESSIBILITY,
         ),
         Tool(
@@ -207,9 +211,12 @@ object MachineTools {
         Tool(
             name = ANSWER,
             // This owned no question words at all, so every "what..." fell to read_screen,
-            // whose description carries "what does this say". The tool that should catch a
-            // question has to be the one holding the words a question starts with.
-            description = "Answer a question from knowledge: what time is it in Berlin, who wrote Hamlet.",
+            // whose description carries "what does this say". Naming the categories beats
+            // listing examples: "the time elsewhere" catches "what time is it in Berlin"
+            // without spending a whole example on it, and the closing negative is what
+            // finally pushed questions off read_screen. (Wording from ijazshare/assistant.)
+            description = "Answer a general question: a fact, arithmetic, or the time elsewhere. " +
+                "Not the screen.",
             params = listOf(
                 ToolParam("text", ParamType.STRING, "The answer, one or two sentences.", required = true),
             ),

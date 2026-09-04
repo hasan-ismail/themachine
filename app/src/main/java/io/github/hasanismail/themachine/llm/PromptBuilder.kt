@@ -35,6 +35,9 @@ object PromptBuilder {
     private const val TURN_START = "<start_of_turn>"
     private const val TURN_END = "<end_of_turn>"
 
+    // adminName and userContext stay in the signature: PromptDialect defines it, and both
+    // still matter to AnswerPrompt. Routing simply must not see them.
+    @Suppress("UnusedParameter")
     fun build(
         transcript: String,
         tools: List<Tool>,
@@ -43,7 +46,11 @@ object PromptBuilder {
         now: LocalDateTime = LocalDateTime.now(),
     ): String = buildString {
         append(TURN_START).appendLine("user")
-        appendLine("Pick one tool for $adminName's request. Output JSON only.")
+        // The user's name is deliberately NOT here. It plays no part in choosing a tool, and
+        // a name that is also an ordinary word - "Admin", the default - dragged "text me" to
+        // set_alarm and cut routing from 86% to 57% on device. The name still personalises
+        // the spoken answer; see AnswerPrompt. (Fix from ijazshare/assistant.)
+        appendLine("Pick one tool for this request. Output JSON only.")
         appendLine()
 
         // Everything from here to the clock line is byte-identical between requests, and
@@ -73,12 +80,14 @@ object PromptBuilder {
         // starts copying: at roughly 620 prompt tokens every reply came back as the
         // first example verbatim, whatever had been asked.
         appendLine("""alarm at 7 -> {"tool":"set_alarm","arguments":{"hour":7,"minute":0}}""")
-        // Carries two things at once: "<fraction> past <hour>" as an idiom, and an
-        // evening hour written in 24-hour form. Different numbers and a different part
-        // of the day than any phrase under test, so what transfers is the shape.
+        // send_message rather than a second set_alarm example. set_alarm is the tool the
+        // model over-predicts when the prompt tips, so it needs the least help, and the
+        // prompt has no room to grow: past roughly 620 tokens every reply comes back as the
+        // first example verbatim. So this buys the messaging shape - verb, recipient, body -
+        // at no extra length. (Fix from ijazshare/assistant.)
         appendLine(
-            """half past ten at night -> """ +
-                """{"tool":"set_alarm","arguments":{"hour":22,"minute":30}}""",
+            """text Sara I'll be late -> """ +
+                """{"tool":"send_message","arguments":{"recipient":"Sara","body":"I'll be late"}}""",
         )
         appendLine("""timer for three minutes -> {"tool":"set_timer","arguments":{"minutes":3}}""")
         // With a time on it, since a reminder without one was the only example and the
@@ -99,26 +108,27 @@ object PromptBuilder {
         // Without this the model reliably sent "scroll down" to navigate, which is the
         // one pair of tools whose descriptions alone did not separate them.
         appendLine("""scroll down -> {"tool":"scroll","arguments":{"direction":"down"}}""")
+        // A general question. Without it every "how many", "who", "how far" and "what time
+        // in <city>" landed on read_screen - the only question-shaped example in the list -
+        // and the assistant recited the screen instead of answering. Exactly one, because a
+        // 1B stops discriminating and starts copying once the prompt grows too long.
+        // (Fix from ijazshare/assistant.)
+        appendLine(
+            """who painted the Mona Lisa -> """ +
+                """{"tool":"answer","arguments":{"text":"Leonardo da Vinci."}}""",
+        )
         appendLine()
 
-        if (userContext.isNotBlank()) {
-            appendLine("About $adminName:")
-            appendLine(userContext.take(CONTEXT_BUDGET))
-            appendLine()
-        }
+        // The user's context is deliberately NOT here either. It personalises an *answer*,
+        // but for *tool choice* it is noise: injecting the tasks file flipped "text me ..."
+        // to set_alarm and cut send_message from 6/8 to 4/8. Routing stays minimal - tools,
+        // examples, the request. The context still reaches AnswerPrompt.
 
         appendLine("Now: ${now.format(NOW_FORMAT)}")
         appendLine("Request: $transcript")
         appendLine(TURN_END)
         append(TURN_START).appendLine("model")
     }
-
-    /**
-     * The user's own notes are the one unbounded part of the prompt, and every token of
-     * them is prefill the user waits for. Capped so a long memories file cannot quietly
-     * make the assistant slow.
-     */
-    private const val CONTEXT_BUDGET = 600
 
     private val NOW_FORMAT: DateTimeFormatter =
         DateTimeFormatter.ofPattern("EEEE HH:mm, d MMMM yyyy")

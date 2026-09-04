@@ -32,17 +32,33 @@ object AnswerPrompt {
         now: LocalDateTime = LocalDateTime.now(),
     ): String = buildString {
         append(TURN_START).appendLine("user")
-        // "If you do not know, say so" was in here, and the model took the invitation:
-        // it answered "I don't know who painted the Mona Lisa." The permission to refuse
-        // has to be narrower than the instruction to answer, or a 4B will take the
-        // cheaper option. It is also told it has no internet, because otherwise it
-        // declines current-affairs questions by explaining that it cannot browse.
+        // The line to walk: answer what it reliably knows, decline what it cannot know
+        // offline rather than invent it. A blanket "if you don't know, say so" makes a 4B
+        // take the cheaper way out and refuse even the Mona Lisa; naming the categories it
+        // must NOT guess at — live, changing, countable-but-unknown — keeps the refusals
+        // where they belong. Told it is offline so it declines current affairs plainly
+        // instead of explaining it cannot browse.
         appendLine(
-            "You are $adminName's assistant on their phone. Answer from your own knowledge, " +
-                "in ONE short sentence, plainly and directly. Do not add a second sentence. " +
-                "You are offline, so do not mention searching or browsing. Say you are not " +
-                "sure only when you really are not.",
+            "You are $adminName's assistant on their phone, offline. Answer general-knowledge " +
+                "questions — established facts, definitions, arithmetic — from your own knowledge, " +
+                "in ONE short plain sentence. But if a correct answer would need live or changing " +
+                "information you cannot have offline — weather, news, prices, scores, or how many " +
+                "of something there are — say you cannot know that offline instead of guessing. " +
+                "Never invent a number you are not sure of. Do not mention searching or browsing. " +
+                "You are only answering in words here: you cannot send a message, place a call, " +
+                "set an alarm or otherwise act on the phone from this reply, so if you are asked " +
+                "to do one of those, say you cannot do that here — never claim you did it.",
         )
+        // The instruction alone does not stop a 4B inventing "25,000 buildings" or a game
+        // score: it does not know that it does not know, so it fills the blank. Three
+        // contrasts — a fact answered, a live figure and an unknowable count both declined
+        // — give it the pattern to match. Deliberately not the benchmark's own questions,
+        // so the honesty test still measures whether the pattern generalises.
+        appendLine()
+        appendLine("Examples:")
+        appendLine("what is the capital of Japan -> Tokyo is the capital of Japan.")
+        appendLine("what is the price of gold today -> I can't know current prices offline.")
+        appendLine("how many cars are in London -> I can't know a count like that offline.")
         if (userContext.isNotBlank()) {
             appendLine()
             appendLine("About $adminName:")

@@ -10,6 +10,7 @@
 package io.github.hasanismail.themachine.assistant
 
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
@@ -32,8 +33,32 @@ object LocalAnswers {
     private val CLOCK_WORDS = setOf("time", "clock", "oclock")
     private val DATE_WORDS = setOf("date", "day", "today", "month", "year")
     private val ASKING = setOf(
-        "what", "whats", "which", "tell", "say", "is", "it", "the", "and", "me", "now", "s",
+        "what", "whats", "which", "tell", "say", "is", "it", "the", "and", "me", "now", "s", "in", "at",
     )
+
+    /**
+     * Time zones by the city that names them, e.g. "berlin" -> Europe/Berlin.
+     *
+     * Built from the platform's own zone table rather than a list written here, so it
+     * covers every city Android knows and needs no maintenance. Ambiguous last segments
+     * (several zones ending "GMT") are dropped rather than guessed at.
+     */
+    private val ZONES_BY_CITY: Map<String, ZoneId> by lazy {
+        ZoneId.getAvailableZoneIds()
+            .filter { it.contains('/') }
+            .groupBy { it.substringAfterLast('/').replace('_', ' ').lowercase() }
+            .filterValues { it.size == 1 }
+            .mapValues { (_, ids) -> ZoneId.of(ids.first()) }
+    }
+
+    /** The time in a named place, or null when the words name no place this phone knows. */
+    private fun elsewhere(place: List<String>, words: List<String>, now: LocalDateTime): String? {
+        if (words.none { it in CLOCK_WORDS }) return null
+        val zone = ZONES_BY_CITY[place.joinToString(" ")] ?: return null
+        val there = now.atZone(ZoneId.systemDefault()).withZoneSameInstant(zone)
+        val named = place.joinToString(" ") { it.replaceFirstChar(Char::titlecase) }
+        return "It is ${there.format(TIME)} in $named."
+    }
 
     /** The answer, or null if this is not a question the clock can settle. */
     fun of(transcript: String, now: LocalDateTime = LocalDateTime.now()): String? {
@@ -43,7 +68,13 @@ object LocalAnswers {
         // A question, not a command: "set a timer" mentions no clock word, and "what
         // time is it" is nothing but asking words and a clock word.
         if (words.none { it in ASKING }) return null
-        if (words.any { it !in ASKING && it !in CLOCK_WORDS && it !in DATE_WORDS }) return null
+
+        // Anything left over after the asking and clock words is a place, if it is one the
+        // platform's zone table knows. "What time is it in Berlin" is as exactly knowable
+        // as "what time is it" — the phone holds the whole zone database — and routing it
+        // to a 1B produced read_screen, which recited the notification shade instead.
+        val leftover = words.filterNot { it in ASKING || it in CLOCK_WORDS || it in DATE_WORDS }
+        if (leftover.isNotEmpty()) return elsewhere(leftover, words, now)
 
         val wantsClock = words.any { it in CLOCK_WORDS }
         val wantsDate = words.any { it in DATE_WORDS }

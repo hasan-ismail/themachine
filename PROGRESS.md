@@ -464,6 +464,55 @@ What did change is a `join` before the model is freed. The save walks the very c
 `nativeFree` releases, and that race is real even though it is not the one being chased —
 state saving has already caused one use-after-free crash in this project.
 
+### What came back from the fork
+
+ijazshare/assistant branched at 0400f45 and fixed several things independently, mostly by
+measuring them on hardware. Its UI work is deliberately not taken; these are:
+
+**The microphone was being fed digital zeros.** RECORD_AUDIO is granted "while in use", and
+the assistant records from an overlay with no activity in the foreground, so the appop hands
+it silence. Proven there the way I could not prove it here: the same capture reads real audio
+with the app foregrounded and zeros with it backgrounded. My own tests always had the app
+effectively foregrounded, which is exactly why the audit's silenced-stream finding looked
+unreproducible. A microphone-typed foreground service, running only while recording, puts the
+process into the state the appop checks for. This is the rest of the deafness.
+
+**A stale prompt cache does not fail to load, it corrupts generation.** The prompt is baked
+into the APK, so a cache written by a different build describes a different prompt — and
+loading one made the router copy its first example and answer almost everything with "set an
+alarm". That is the true explanation of something I had written off as model weakness: my own
+"beep -> set_alarm at 22:00" appeared right after I changed tool descriptions, with a cache
+from before the change still on disk. Caches are now stamped with the package's install time
+and dropped when it moves.
+
+**The user's name and context do not belong in a routing prompt.** Measured there: the default
+name "Admin" is an ordinary word and dragged "text me" to set_alarm, cutting routing from 86%
+to 57%; injecting the tasks file cut send_message from 6/8 to 4/8. Both still reach
+AnswerPrompt, where they personalise an answer. Removing them also freed the prompt budget I
+had been fighting over.
+
+**And VOICE_RECOGNITION can open and then feed silence** after an audio-route change, so the
+recorder now falls through to MIC and reports capture stats — peak amplitude and frame count —
+so a silent source is distinguishable from an early dismissal in the log.
+
+Also taken: ContactMatch (the contacts provider matched "me" to "MI Aziz" and a message went
+to a father-in-law at 3am), MessageBody (a body whose words are mostly absent from the
+transcript was invented, not dictated, and a text has no undo), and an AnswerPrompt that
+declines live or unknowable figures instead of inventing them.
+
+One change is a deliberate reversal of a safety decision and is flagged rather than hidden:
+send_message now sends through SmsManager instead of composing in the messaging app. The
+original comment argued that silently sending speech-recognised text is the one action with no
+undo. MessageBody guards the worst case, but this is a posture change and it is Hasan's.
+
+### The time elsewhere was never the model's job
+
+"What time is it in Berlin" survived every wording change — read_screen, read_notifications,
+read_screen again — because a 1B was being asked to decide it at all. The phone carries the
+whole IANA zone table. LocalAnswers now reads the leftover words as a place and answers from
+`ZoneId`, exactly as it already answered the plain clock question, and the model never sees
+it. Exact instead of a coin toss, and it costs no tokens.
+
 ### Tool descriptions are a fixed budget, and I spent it badly
 
 Read out of Hasan's own query log on the S26, not reasoned about. Three real faults.

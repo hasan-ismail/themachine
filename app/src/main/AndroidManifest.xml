@@ -147,6 +147,15 @@
           Merging the type in is the documented fix. Without it every model download
           crashes the process the moment the worker goes to the foreground.
         -->
+        <!-- Holds a foreground state while the assistant records. The microphone permission
+             is "while in use", so a recording from the background overlay is fed silence
+             without this. Proven on device: the same capture reads real audio with the app
+             foregrounded and digital zeros with it backgrounded. -->
+        <service
+            android:name=".assistant.MicForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"

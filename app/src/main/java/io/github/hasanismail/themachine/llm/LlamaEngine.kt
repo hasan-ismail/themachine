@@ -10,6 +10,7 @@
 package io.github.hasanismail.themachine.llm
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.util.Log
 import io.github.hasanismail.themachine.nativebridge.NativeBridge
 import kotlinx.coroutines.Dispatchers
@@ -46,10 +47,18 @@ class LlamaEngine(private val context: Context) {
             unload()
             handle = LlamaNative.nativeLoad(modelFile.absolutePath, contextSize, threadCount())
             if (handle != 0L) {
-                // Best effort: a cache from an older prompt or a different model simply
-                // will not load, and the next prompt is prefilled as it always was.
-                cacheFile = File(modelFile.parentFile, modelFile.name + CACHE_SUFFIX)
-                LlamaNative.nativeLoadState(handle, cacheFile!!.absolutePath)
+                val cache = File(modelFile.parentFile, modelFile.name + CACHE_SUFFIX)
+                cacheFile = cache
+                if (PromptCacheGuard.isFresh(readStamp(cache), installStamp())) {
+                    LlamaNative.nativeLoadState(handle, cache.absolutePath)
+                } else {
+                    // Written by a different build, whose baked-in prompt may not match this
+                    // one's. A mismatched cache does not fail to load, it corrupts
+                    // generation: on device it made the router copy its first example and
+                    // answer almost everything with "set an alarm". Drop it and prefill once.
+                    cache.delete()
+                    stampFile(cache).delete()
+                }
             }
             handle != 0L
         }
@@ -64,9 +73,24 @@ class LlamaEngine(private val context: Context) {
         val current = handle
         val file = cacheFile
         current != 0L && file != null && synchronized(this@LlamaEngine) {
-            handle != 0L && LlamaNative.nativeSaveState(handle, file.absolutePath)
+            handle != 0L && LlamaNative.nativeSaveState(handle, file.absolutePath).also { ok ->
+                // Stamped with this install, so a later build cannot reuse it.
+                if (ok) runCatching { stampFile(file).writeText(installStamp()) }
+            }
         }
     }
+
+    private fun stampFile(cache: File) = File(cache.parentFile, cache.name + STAMP_SUFFIX)
+
+    private fun readStamp(cache: File): String? = runCatching { stampFile(cache).readText() }.getOrNull()
+
+    // The package's install/update time - the one signal that the baked-in prompt may have
+    // moved, since the prompt ships inside the APK.
+    private fun installStamp(): String = runCatching {
+        context.packageManager
+            .getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
+            .lastUpdateTime.toString()
+    }.getOrDefault("")
 
     /** Model name, parameter count and context size, for the diagnostics screen. */
     suspend fun describe(): String = withContext(Dispatchers.Default) {
@@ -146,6 +170,9 @@ class LlamaEngine(private val context: Context) {
 
         /** Appended to the model's own file name, so a cache follows its model. */
         const val CACHE_SUFFIX = ".prompt-cache"
+
+        /** Appended to the cache file's name; records which build wrote it. */
+        const val STAMP_SUFFIX = ".build"
 
         /**
          * The longest legal tool call is well under this. The cap is what bounds the
