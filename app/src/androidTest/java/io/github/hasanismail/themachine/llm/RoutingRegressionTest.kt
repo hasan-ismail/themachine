@@ -96,6 +96,20 @@ class RoutingRegressionTest {
     }
 
     @Test
+    fun theReminderToolsAreToldApart() {
+        assumeTrue("No language model installed", ready)
+        // These share a subject and will collide if their wording ever overlaps.
+        // "Mark it done" reaching create_reminder would file a second copy of the task
+        // rather than tick off the first, which is worse than doing nothing.
+        assertThat(route("remind me to take the bins out at six"))
+            .isEqualTo(MachineTools.CREATE_REMINDER)
+        // Reading the list back and ticking a task off are deliberately not the model's
+        // decisions any more: both are recognised before a model is loaded, because
+        // declaring tools for them measurably degraded timers and reminders and sent
+        // "mark the bins done" to create_reminder. See TaskQuestionTest.
+    }
+
+    @Test
     fun readingTheScreenStillWorks() {
         assumeTrue("No language model installed", ready)
         assertThat(route("what does this say")).isEqualTo(MachineTools.READ_SCREEN)

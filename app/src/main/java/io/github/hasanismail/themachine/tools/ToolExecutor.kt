@@ -52,11 +52,16 @@ class ToolExecutor(
 
     private val screenshots = ScreenshotStore(context)
 
+    private val reminderTools = ReminderTools(reminders)
+
     private val handlers: Map<String, suspend (ToolCall) -> ToolResult> = mapOf(
         MachineTools.SET_ALARM to { call -> setAlarm(call) },
         MachineTools.SET_TIMER to { call -> setTimer(call) },
         MachineTools.SHOW_ALARMS to { _ -> showAlarms() },
         MachineTools.CREATE_REMINDER to { call -> createReminder(call) },
+        MachineTools.LIST_REMINDERS to { _ -> reminderTools.list() },
+        MachineTools.COMPLETE_REMINDER to { call -> reminderTools.complete(call) },
+        MachineTools.RESCHEDULE_REMINDER to { call -> reminderTools.reschedule(call) },
         MachineTools.SEND_MESSAGE to { call -> sendMessage(call) },
         MachineTools.CALL_CONTACT to { call -> callContact(call) },
         MachineTools.OPEN_APP to { call -> openApp(call) },

@@ -464,6 +464,44 @@ What did change is a `join` before the model is freed. The save walks the very c
 `nativeFree` releases, and that race is real even though it is not the one being chased —
 state saving has already caused one use-after-free crash in this project.
 
+### Reminders that keep asking, and what it cost to find out how
+
+A reminder that fires once can be missed by being in another room, so it now asks again
+every five minutes until it is dealt with. The stopping condition is deliberately the user's
+own list rather than a counter this code keeps: every repeat re-reads the task file first and
+stops the moment the task is ticked off, deleted or moved. That is what keeps it from
+becoming the re-arm loop this file has already produced once. It also gives up after eight
+tries — something ignored eight times will not be answered by a ninth, and a notification
+that can never be silenced is a worse failure than one that is missed. The notification is
+ongoing so a swipe cannot dismiss it, and a repeat says "Still waiting" so it reads as the
+same reminder asking again rather than a new one.
+
+The interesting part was reaching any of it by voice.
+
+**Eighteen tools is too many for this model, and it is measurable.** Adding list, complete
+and reschedule took device routing from one failure to five, reproducibly. "Timer for ten
+minutes" came back as `{hours=20, minutes=50, seconds=50}` — the wall clock, read straight
+out of the prompt's own "Now:" line. The prompt measured 620 tokens, which is exactly the
+figure PromptBuilder's comment names as where a 1B stops discriminating and starts copying
+its first example. The 300-word ceiling in MachineToolsTest did not catch it because 297
+words was already broken; it is now 280, below the cliff rather than on it.
+
+Withdrawing reschedule took it from five failures back to one. Withdrawing the other two
+took it to none.
+
+**So all three are recognised before the model instead**, the way the timezone question is.
+None of them needs one: the clock, the task list, and which task was named are things the
+device knows exactly. The tools stay implemented and their handlers stay wired — only the
+declarations the model sees are gone. `TaskQuestion` recognises the asking, `TaskMatcher`
+resolves which task was meant, and both are unit-tested with the false positives that would
+matter more than the misses: "remind me to mark the report done" contains every finishing
+word there is and must still write something down.
+
+The one that decided it: declared as a tool, "mark the bins done" resolved to
+`create_reminder`. That does not fail — it files a second copy of the task and says it did.
+A wrong answer that looks like a right one is the worst kind, and it is the reason this
+family belongs outside the model's vocabulary rather than in it.
+
 ### What came back from the fork
 
 ijazshare/assistant branched at 0400f45 and fixed several things independently, mostly by

@@ -26,6 +26,9 @@ object MachineTools {
     const val SET_TIMER = "set_timer"
     const val SHOW_ALARMS = "show_alarms"
     const val CREATE_REMINDER = "create_reminder"
+    const val LIST_REMINDERS = "list_reminders"
+    const val COMPLETE_REMINDER = "complete_reminder"
+    const val RESCHEDULE_REMINDER = "reschedule_reminder"
     const val SEND_MESSAGE = "send_message"
     const val CALL_CONTACT = "call_contact"
     const val OPEN_APP = "open_app"
@@ -70,7 +73,7 @@ object MachineTools {
             // create_reminder's. "Set a 30 minute timer" duly became a reminder. A small
             // model matches on the tokens it is given, so the tool that owns a word has
             // to contain it.
-            description = "Timer counting down: set a timer for ten minutes, timer 5 min.",
+            description = "Timer counting down: timer for ten minutes.",
             params = listOf(
                 // Each unit is reported as spoken and added up in Kotlin. Asked for a
                 // total, the model copied the number from whichever example looked
@@ -155,13 +158,12 @@ object MachineTools {
             // carries it as a worked example, and having the same question-shaped phrase in
             // both places is what kept pulling "what time is it in Berlin" to this tool.
             // The description says what the tool reads; the example says how it is asked for.
-            description = "Speak aloud the text currently displayed. Never saves a picture.",
+            description = "Speak aloud the text on screen. Never saves a picture.",
             requires = ToolCapability.ACCESSIBILITY,
         ),
         Tool(
             name = TAKE_SCREENSHOT,
-            description = "Save a picture of the screen in the gallery: " +
-                "take a screenshot, screenshot this, capture the screen.",
+            description = "Save a picture of the screen in the gallery.",
             // Deliberately no parameters. A screenshot has no arguments, and every
             // optional slot is one more place a small model can invent a value — which is
             // exactly how a mumbled "50" became a three minute timer.

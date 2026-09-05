@@ -19,6 +19,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.getSystemService
 import androidx.core.net.toUri
 import io.github.hasanismail.themachine.context.MachineFiles
+import io.github.hasanismail.themachine.context.TaskLine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
@@ -130,6 +131,56 @@ class ReminderStore(private val context: Context) {
         context.getSystemService<AlarmManager>()?.cancel(pendingIntentFor(id, task = ""))
     }
 
+    /** Every task still outstanding, soonest first, undated ones last. */
+    fun open(): List<TaskLine> = files.readTasks()
+        .filterNot { it.done }
+        .sortedWith(compareBy(nullsLast()) { it.due })
+
+    /**
+     * Ticks off whatever [spoken] names, or says why it could not.
+     *
+     * Ambiguity is reported rather than resolved: ticking off the wrong task is a silent
+     * loss, because the user then believes something is handled that is not.
+     */
+    fun completeMatching(spoken: String): ToolResult =
+        when (val found = TaskMatcher.find(spoken, files.readTasks())) {
+            is TaskMatcher.Result.One -> {
+                val id = found.task.id
+                if (id == null) {
+                    ToolResult.failed("I can only tick off tasks I set myself.")
+                } else {
+                    complete(id)
+                    ToolResult.ok("Done: ${found.task.title}.")
+                }
+            }
+
+            is TaskMatcher.Result.Several -> ambiguous(found.tasks)
+
+            TaskMatcher.Result.None -> ToolResult.failed("I could not find that on your list.")
+        }
+
+    /** Moves whatever [spoken] names to [due], re-arming its alarm. */
+    fun rescheduleMatching(spoken: String, due: LocalDateTime): ToolResult =
+        when (val found = TaskMatcher.find(spoken, files.readTasks())) {
+            is TaskMatcher.Result.One -> {
+                val id = found.task.id
+                if (id == null) {
+                    ToolResult.failed("I can only move tasks I set myself.")
+                } else {
+                    files.rescheduleTask(id, due)
+                    schedule(id, found.task.title, due)
+                    ToolResult.ok("Moved ${found.task.title} to ${due.format(SPOKEN_TIME)}.")
+                }
+            }
+
+            is TaskMatcher.Result.Several -> ambiguous(found.tasks)
+
+            TaskMatcher.Result.None -> ToolResult.failed("I could not find that on your list.")
+        }
+
+    private fun ambiguous(tasks: List<TaskLine>): ToolResult =
+        ToolResult.failed("I have more than one of those: ${tasks.joinToString(", ") { it.title }}.")
+
     /**
      * Re-arms every open, dated task from the file. Returns how many.
      *
@@ -169,6 +220,37 @@ class ReminderStore(private val context: Context) {
     )
 
     /**
+     * Arms the next repeat of a reminder that has not been dealt with.
+     *
+     * Deliberately a separate alarm from [schedule]: it must not touch the task's due time
+     * in the file, or asking again would keep pushing the task's own deadline forward and
+     * the list would show a time that has nothing to do with when it was set.
+     */
+    fun armNag(id: String, task: String, nag: Int) {
+        val alarms = context.getSystemService<AlarmManager>() ?: return
+        val at = System.currentTimeMillis() + NAG_MINUTES * MILLIS_PER_MINUTE
+        val pending = PendingIntent.getBroadcast(
+            context,
+            id.hashCode(),
+            Intent(context, ReminderReceiver::class.java).apply {
+                action = ReminderReceiver.ACTION_FIRE
+                data = "themachine://task/$id".toUri()
+                putExtra(ReminderReceiver.EXTRA_ID, id)
+                putExtra(ReminderReceiver.EXTRA_TASK, task)
+                putExtra(ReminderReceiver.EXTRA_NAG, nag)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        runCatching { alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending) }
+            .onFailure {
+                // Without the exact-alarm permission this is still worth doing inexactly:
+                // a repeat a few minutes late is the point, a repeat that never comes is not.
+                runCatching { alarms.set(AlarmManager.RTC_WAKEUP, at, pending) }
+            }
+        Log.i(TAG, "reminder $id asking again in $NAG_MINUTES min (repeat $nag)")
+    }
+
+    /**
      * Whether a reminder would actually appear.
      *
      * The app-wide switch is not the only one: long-pressing a delivered reminder and
@@ -182,11 +264,18 @@ class ReminderStore(private val context: Context) {
         return channel.importance != NotificationManager.IMPORTANCE_NONE
     }
 
-    private companion object {
+    // Not private: the executor speaks times in the same format and reuses the same snooze
+    // length, so the two must not drift apart.
+    companion object {
         const val TAG = "TheMachine"
         const val HOUR_MAX = 23
         const val MINUTE_MAX = 59
         const val SNOOZE_MINUTES = 10L
+
+        /** How long between repeats of a reminder nobody has answered. */
+        const val NAG_MINUTES = 5L
+
+        const val MILLIS_PER_MINUTE = 60_000L
         const val LATE_GRACE_SECONDS = 5L
         val SPOKEN_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a")
     }

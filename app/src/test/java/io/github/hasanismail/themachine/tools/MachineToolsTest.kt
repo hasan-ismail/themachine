@@ -32,7 +32,11 @@ class MachineToolsTest {
             adminName = "Hasan",
             userContext = "",
         )
-        assertThat(prompt.split(Regex("""\s+""")).size).isLessThan(300)
+        // 280, not 300. Measured on device: at 297 words — about 620 tokens — every reply
+        // came back as the first example verbatim, which is exactly the figure
+        // PromptBuilder's own comment names. A ceiling the prompt can reach while already
+        // broken is not a ceiling, so this sits below the cliff rather than on it.
+        assertThat(prompt.split(Regex("""\s+""")).size).isLessThan(280)
     }
 
     @Test

@@ -451,20 +451,37 @@ class VoiceSession(private val context: Context, private val scope: CoroutineSco
      * doing it. Then the remembered shapes, which is the whole point of remembering them.
      */
     private suspend fun answeredWithoutTheModel(transcript: String, sttMillis: Long): Boolean {
-        LocalAnswers.of(transcript)?.let { answer ->
-            carryOut(
-                transcript,
-                ToolCall(MachineTools.ANSWER, mapOf("text" to answer)),
-                sttMillis,
-                llmMillis = 0,
-                resolution = Resolution.CACHE,
-            )
-            return true
-        }
-        val known = withContext(Dispatchers.IO) { cache.lookup(transcript) } ?: return false
-        Log.i(TAG, "cache hit [$transcript] -> ${known.tool} ${known.arguments}")
-        carryOut(transcript, known, sttMillis, llmMillis = 0, resolution = Resolution.CACHE)
+        val call = settledLocally(transcript)
+            ?: withContext(Dispatchers.IO) { cache.lookup(transcript) }
+            ?: return false
+        Log.i(TAG, "settled without the model [$transcript] -> ${call.tool} ${call.arguments}")
+        carryOut(transcript, call, sttMillis, llmMillis = 0, resolution = Resolution.CACHE)
         return true
+    }
+
+    /**
+     * The three things the phone can settle exactly, without loading anything.
+     *
+     * All three were tried as tools first and all three were worse for it. Every tool
+     * declared dilutes a 1B measurably — adding the reminder family took routing from one
+     * failure to five, and "timer for ten minutes" started coming back with the wall clock
+     * in it. Worse, "mark the bins done" resolved to create_reminder, which files a second
+     * copy of a task rather than finishing the first: silent, and actively wrong.
+     *
+     * None of the three needs a model. The clock, the task list, and which task was named
+     * are all things the device knows exactly.
+     */
+    private fun settledLocally(transcript: String): ToolCall? {
+        LocalAnswers.of(transcript)?.let {
+            return ToolCall(MachineTools.ANSWER, mapOf("text" to it))
+        }
+        if (TaskQuestion.isAskingForList(transcript)) {
+            return ToolCall(MachineTools.LIST_REMINDERS, emptyMap())
+        }
+        TaskQuestion.completionTarget(transcript)?.let {
+            return ToolCall(MachineTools.COMPLETE_REMINDER, mapOf("task" to it))
+        }
+        return null
     }
 
     /** Executes a resolved call, then records, remembers, shows and speaks the outcome. */
