@@ -7,8 +7,8 @@
 [versions]
 # ---- Build toolchain ----
 agp = "9.4.0"
-kotlin = "2.4.10"
-ksp = "2.3.11"
+kotlin = "2.4.20"
+ksp = "2.3.12"
 
 # ---- Android platform ----
 # API 37 = Android 17. AGP 9.4.0 caps out at API 37, so this is the ceiling.
