@@ -103,7 +103,7 @@ jobs:
             "ndk;${{ steps.sdk.outputs.ndk }}"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6.3.0
+        uses: gradle/actions/setup-gradle@v6.4.0
         with:
           cache-read-only: true
           validate-wrappers: true
