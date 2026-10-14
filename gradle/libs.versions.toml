@@ -50,7 +50,7 @@ okhttp = "5.5.0"
 commonsCompress = "1.28.0"
 
 # ---- Static analysis / formatting ----
-spotless = "8.10.1"
+spotless = "8.10.4"
 ktlint = "1.8.0"
 detekt = "1.23.8"
 
