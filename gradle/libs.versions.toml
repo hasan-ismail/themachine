@@ -46,7 +46,7 @@ hilt = "2.60.1"
 androidxHilt = "1.4.0"
 
 # ---- Networking (model downloads only - see Privacy invariants in CLAUDE.md) ----
-okhttp = "5.5.0"
+okhttp = "5.5.1"
 commonsCompress = "1.28.0"
 
 # ---- Static analysis / formatting ----
